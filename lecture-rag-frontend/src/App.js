@@ -1,38 +1,27 @@
 import React, { useState } from "react";
 import "./App.css";
+import { sendMessageToBackend } from "./api";
 
 function App() {
   const [messages, setMessages] = useState([
-    { sender: "bot", text: "Hi! I'm your Lecture Assistant Chatbot. Ask me anything from your lecture." }
+    { sender: "bot", text: "Hi! I'm your Lecture Assistant Chatbot. Ask me anything from your lectures." }
   ]);
   const [input, setInput] = useState("");
-  const [lastBotMessage, setLastBotMessage] = useState(null);
-  const [showSimplify, setShowSimplify] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return;
 
-    const newMessage = { sender: "user", text: input };
-    setMessages([...messages, newMessage]);
-    setShowSimplify(false); // hide simplify when sending new question
-
-    // For now, fake chatbot reply
-    setTimeout(() => {
-      const botReply = "Cloud computing is like renting a computer over the internet instead of owning one.";
-      setMessages((prev) => [...prev, { sender: "bot", text: botReply }]);
-      setLastBotMessage(botReply);
-      setShowSimplify(true); // show simplify button after bot responds
-    }, 800);
-
+    const userMessage = { sender: "user", text: input };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
-  };
+    setLoading(true);
 
-  const handleSimplify = () => {
-    setShowSimplify(false);
+    // Call your FastAPI backend
+    const botReply = await sendMessageToBackend(input);
 
-    // Simulate a simpler explanation
-    const simplified = "It means you use someone else's computer online to store files or run programs.";
-    setMessages((prev) => [...prev, { sender: "bot", text: simplified }]);
+    setMessages((prev) => [...prev, { sender: "bot", text: botReply }]);
+    setLoading(false);
   };
 
   return (
@@ -43,14 +32,8 @@ function App() {
             <p>{msg.text}</p>
           </div>
         ))}
+        {loading && <div className="message bot"><p>Thinking...</p></div>}
       </div>
-
-      {/* Simplify button (only visible after bot reply) */}
-      {showSimplify && (
-        <button className="simplify-btn" onClick={handleSimplify}>
-          Simplify this explanation
-        </button>
-      )}
 
       <div className="input-area">
         <input
@@ -60,11 +43,10 @@ function App() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-        <button onClick={handleSend}>Send</button>
+        <button onClick={handleSend} disabled={loading}>Send</button>
       </div>
     </div>
   );
 }
 
 export default App;
-
