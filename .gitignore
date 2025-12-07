@@ -4,3 +4,8 @@ node_modules/
 __pycache__/
 venv/
 .DS_Store
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+lecture_infra/build/
