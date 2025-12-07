@@ -15,15 +15,25 @@ from vertexai.preview.language_models import TextEmbeddingModel
 from google.cloud import aiplatform
 import vertexai
 
+from google import genai
+from google.genai import types as genai_types
+
+
 from .config import settings
 
 # ---------- Logging ----------
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 log = logging.getLogger("rag")
 
-# ---------- Pydantic models ----------
+# NEW: one history item (one message in the conversation)
+class HistoryItem(BaseModel):
+    role: str  # "user" or "assistant"
+    text: str
+
 class QueryRequest(BaseModel):
+    # Frontend will send { prompt: "...", history: [...] }
     prompt: str
+    history: List[HistoryItem] = []   # NEW: optional history
 
 class QueryResponse(BaseModel):
     response: str
@@ -35,9 +45,33 @@ def _init_vertexai_once():
     global _vertexai_inited
     if _vertexai_inited:
         return
-    vertexai.init(project=settings.vertex_ai_project, location=settings.vertex_ai_location)
+    vertexai.init(project=settings.google_cloud_project, location=settings.google_cloud_location)
     _vertexai_inited = True
-    log.info("Vertex AI initialized for project=%s location=%s", settings.vertex_ai_project, settings.vertex_ai_location)
+    log.info("Vertex AI initialized for project=%s location=%s", settings.google_cloud_project, settings.google_cloud_location)
+
+_genai_client: genai.Client | None = None
+
+# ---------- Gemini client (idempotent) ----------
+def get_gemini_client() -> genai.Client:
+    """
+    Vertex AI Gemini client using google-genai.
+    Uses your project + location from settings.
+    """
+    global _genai_client
+    if _genai_client is None:
+        _genai_client = genai.Client(
+            vertexai=True,
+            project=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            http_options=genai_types.HttpOptions(api_version="v1"),
+        )
+        log.info(
+            "Initialized Vertex AI Gemini client for project=%s location=%s",
+            settings.google_cloud_project,
+            settings.google_cloud_location,
+        )
+    return _genai_client
+
 
 # ---------- Embeddings ----------
 async def get_query_embedding(text: str) -> List[float]:
@@ -69,8 +103,8 @@ async def fetch_google_access_token() -> str:
 
 # ---------- Matching Engine Vector Search ----------
 async def vertex_ai_vector_search_texts(query_vector: List[float], neighbor_count: int = 4) -> list[str]:
-    project_id = settings.vertex_ai_project
-    location = settings.vertex_ai_location
+    project_id = settings.google_cloud_project
+    location = settings.google_cloud_location
     index_endpoint = settings.vertex_ai_index_endpoint
     deployed_index_id = settings.vertex_ai_deployed_index
 
@@ -118,8 +152,49 @@ async def vector_search(query: str) -> str:
         return "No relevant context found via Vertex AI Vector Search."
     return "\n".join(matched_contexts)
 
+# ---------- Helper: format conversation history ----------
+
+def format_history(history: List[HistoryItem]) -> str:
+    """Turn recent messages into a simple text transcript for the prompt."""
+    if not history:
+        return "(no prior conversation)"
+    lines: list[str] = []
+    for msg in history:
+        role = "USER" if msg.role == "user" else "ASSISTANT"
+        lines.append(f"{role}: {msg.text}")
+    return "\n".join(lines)
+
+
+
 # ---------- RAG prompt ----------
-def construct_gemini_payload(query: str, context: str) -> dict:
+def construct_gemini_payload(query: str, context: str, history: List[HistoryItem]) -> dict:
+    system_instruction = (
+        "You are a concise and helpful lecture assistant. "
+        "Answer the student's question using the provided lecture context. "
+        "Keep your answer short and clear—no more than 4 sentences. "
+        "Use the conversation history only when it is clearly relevant to the current question. "
+        "If the student asks for clarification (like 'I don't understand this'), "
+        "explain the same concept in simpler terms rather than giving a long summary. "
+        "If the question is not related to the lecture, say: "
+        "'I'm sorry, I don't have information about that topic in the lecture materials.'"
+    )
+
+    conversation_str = format_history(history)
+
+    user_prompt = (
+        f"Conversation so far:\n{conversation_str}\n\n"
+        f"Lecture Context:\n{context}\n\n"
+        f"Current User Question:\n{query}\n"
+    )
+
+    # Adapted for google-genai instead of raw HTTP payload
+    payload = {
+        "contents": user_prompt,
+        "system_instruction": system_instruction,
+    }
+    log.debug("--- Gemini Payload ---\n%s\n----------------------", json.dumps(payload, indent=2))
+    return payload
+
     system_instruction = (
     "You are a concise and helpful lecture assistant. "
     "Answer the student's question using the provided lecture context. "
@@ -140,6 +215,38 @@ def construct_gemini_payload(query: str, context: str) -> dict:
 
 # ---------- Gemini call (non-streaming) ----------
 async def get_gemini_response_full(payload: dict) -> str:
+    """
+    Call Vertex AI Gemini via google-genai, non-streaming.
+    `payload` is expected to have:
+        - payload["contents"] (string)
+        - payload["system_instruction"] (string)
+    """
+    client = get_gemini_client()
+
+    contents = payload["contents"]
+    system_instruction = payload["system_instruction"]
+
+    def _call_sync():
+        response = client.models.generate_content(
+            model=settings.gemini_model or "gemini-2.5-flash",
+            contents=contents,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system_instruction,
+            ),
+        )
+        return response
+
+    try:
+        resp = await asyncio.to_thread(_call_sync)
+    except Exception as e:
+        log.exception("Gemini Vertex call failed")
+        return f"Error calling Gemini via Vertex AI: {e}"
+
+    text = getattr(resp, "text", None)
+    if not text:
+        return "Error: Could not parse text from Gemini response."
+    return text
+
     if not settings.gemini_api_key:
         return "Error: GEMINI_API_KEY not configured."
 
@@ -192,7 +299,7 @@ async def query(request: QueryRequest):
         log.exception("Vector search failed")
         context = "No relevant context found via Vertex AI Vector Search."
 
-    payload = construct_gemini_payload(request.prompt, context)
+    payload = construct_gemini_payload(request.prompt, context, request.history)
     full_response = await get_gemini_response_full(payload)
     return QueryResponse(response=full_response)
 

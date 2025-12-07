@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     cors_allow_all: bool = Field(default=True)
 
     # Vertex AI
-    vertex_ai_project: str = Field(..., alias="VERTEX_AI_PROJECT")
-    vertex_ai_location: str = Field(..., alias="VERTEX_AI_LOCATION")
+    google_cloud_project: str = Field(..., alias="GOOGLE_CLOUD_PROJECT")
+    google_cloud_location: str = Field(..., alias="GOOGLE_CLOUD_LOCATION")
+    google_genai_use_vertexai: bool = Field(default=True, alias="GOOGLE_GENAI_USE_VERTEXAI")
 
     # Matching Engine (Vector Search)
     vertex_ai_index_endpoint: str = Field(..., alias="VERTEX_AI_INDEX_ENDPOINT")
