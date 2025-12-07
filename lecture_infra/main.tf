@@ -1,13 +1,16 @@
 # Enable the core APIs you need
 resource "google_project_service" "services" {
     for_each = toset([
-        "storage.googleapis.com",
-        "run.googleapis.com",
-        "cloudfunctions.googleapis.com",
-        "eventarc.googleapis.com",
-        "artifactregistry.googleapis.com",
-        "aiplatform.googleapis.com",
-        "cloudbuild.googleapis.com"     
+        "aiplatform.googleapis.com",       # Vertex AI API
+        "logging.googleapis.com",          # Cloud Logging API
+        "cloudfunctions.googleapis.com",   # Cloud Functions API
+        "eventarc.googleapis.com",         # Eventarc API
+        "run.googleapis.com",              # Cloud Run Admin API
+        "artifactregistry.googleapis.com", # Artifact Registry API
+        "pubsub.googleapis.com",           # Cloud Pub/Sub API
+        "cloudbuild.googleapis.com",       # Cloud Build API
+        "iam.googleapis.com",              # IAM API
+        "storage.googleapis.com",          # Cloud Storage API
     ])
 
     project = var.project_id
@@ -59,6 +62,8 @@ resource "google_vertex_ai_index_endpoint" "lecture_endpoint" {
     description             = "Public endpoint for lecture vector search"
     region                  = var.region
     public_endpoint_enabled = true
+
+    depends_on = [google_project_service.services]
 }  
 
 # Deploy index to the endpoint
@@ -75,6 +80,8 @@ resource "google_vertex_ai_index_endpoint_deployed_index" "lecture_deployment" {
         machine_type = "e2-standard-16"
         }
     }
+
+    depends_on = [google_vertex_ai_index_endpoint.lecture_endpoint]
 }
 
 # Upload Cloud Function source code zip to GCS
