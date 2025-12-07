@@ -9,3 +9,4 @@ venv/
 *.tfstate
 *.tfstate.backup
 lecture_infra/build/
+*.tfvars
