@@ -1,13 +1,13 @@
 import CONFIG from "./config";
 
-export async function sendMessageToBackend(prompt) {
+export async function sendMessageToBackend(prompt, history) {
   const url = `${CONFIG.API_BASE_URL}/api/v1/query`;
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, history }),
     });
 
     if (!response.ok) {
