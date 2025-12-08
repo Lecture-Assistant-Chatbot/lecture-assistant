@@ -1,118 +1,62 @@
-# 📘 Vertex AI PDF Embedding Cloud Function
+# Lecture PDF Ingest Function (Vertex AI Embeddings)
 
-This Cloud Function automatically processes uploaded PDF files from a **Google Cloud Storage** bucket.  
-It extracts text, chunks it, generates embeddings using **Vertex AI’s `text-embedding-005`** model, and upserts those embeddings into a **Vertex AI Vector Search Index**.
+Cloud Function (2nd gen) that ingests PDFs from a Cloud Storage bucket, chunks the text, creates embeddings with Vertex AI `text-embedding-005`, and upserts them into a Matching Engine index.
 
----
+## What it does
 
-## ⚙️ Features
+1) Triggered when a PDF is uploaded to the configured bucket.  
+2) Downloads the file to `/tmp`, extracts text with `pdfplumber`.  
+3) Splits text into 1500-character chunks.  
+4) Generates embeddings with Vertex AI.  
+5) Upserts embeddings into Vertex AI Vector Search (Matching Engine).
 
-- 🧾 Extracts text from PDFs using `pdfplumber`
-- ✂️ Splits text into 1500-character chunks
-- 🧠 Generates text embeddings via Vertex AI
-- 📈 Uploads embeddings to a Matching Engine Vector Search Index
-- 🪣 Triggered automatically when a file is uploaded to your Cloud Storage bucket
-
----
-
-## 📁 Project Structure
+## Structure
 
 ```
-.
-├── main.py
-├── requirements.txt
-└── README.md
+lecture_ingest_function/
+├─ main.py          # Function entrypoint
+├─ requirements.txt # Cloud Function dependencies
+└─ README.md
 ```
 
----
+## Requirements
 
-## 📦 Requirements
+- GCP project with Vertex AI and Cloud Functions APIs enabled
+- Cloud Storage bucket to trigger on PDF uploads
+- Matching Engine index ID to upsert into
+- Python 3.11 runtime (function uses `python311`)
 
-`requirements.txt`
+## Environment variables
 
-```
-google-cloud-storage
-google-cloud-aiplatform
-vertexai
-pdfplumber
-```
+| Name | Description |
+| --- | --- |
+| `PROJECT_ID` | GCP project ID |
+| `LOCATION` | Vertex AI region (e.g. `us-central1`) |
+| `INDEX_ID` | Vertex AI Vector Search index ID |
 
----
+## Deploy (Cloud Functions 2nd gen)
 
-## 🔧 Environment Variables
-
-These must be set before deploying:
-
-| Variable     | Description |
-|---------------|-------------|
-| `PROJECT_ID`  | Your Google Cloud project ID |
-| `LOCATION`    | Region for Vertex AI (e.g., `us-central1`) |
-| `INDEX_ID`    | Your Vertex AI Vector Search Index ID |
-
----
-
-## 🚀 Deployment (Cloud Function 2nd Gen)
-
-Run these commands to deploy:
-
+Replace the placeholders before running:
 ```bash
-
 gcloud auth login
-
---set-env-vars
-
+gcloud functions deploy process_lecture \
+  --runtime=python311 \
+  --region=us-central1 \
+  --trigger-event=google.storage.object.finalize \
+  --trigger-resource=YOUR_BUCKET_NAME \
+  --entry-point=process_lecture \
+  --memory=2GB \
+  --timeout=540s \
+  --min-instances=1 \
+  --set-env-vars PROJECT_ID=YOUR_PROJECT_ID,LOCATION=us-central1,INDEX_ID=YOUR_INDEX_ID
 ```
 
-✅ Replace **`YOUR_BUCKET_NAME`** with your Cloud Storage bucket name.
-
----
-
-## 🧠 How It Works
-
-1. A PDF file is uploaded to the configured Cloud Storage bucket.
-2. The function triggers automatically.
-3. It downloads the PDF, extracts its text, and splits it into smaller chunks.
-4. Each chunk is embedded using the Vertex AI `text-embedding-005` model.
-5. The generated embeddings are upserted into the specified Vertex AI Vector Search Index.
-
----
-
-## 🪄 Logs and Monitoring
-
-View logs in Cloud Console under **Cloud Functions → Logs**,  
-or run the command below:
-
+Logs:
 ```bash
 gcloud functions logs read process_lecture --region=us-central1
 ```
 
----
-
-## ⚠️ Notes
-
-- Only `.pdf` files are processed; other files are skipped automatically.  
-- `/tmp` is an ephemeral storage; files are deleted after processing.  
-- Each embedding vector has 768 dimensions (from the `text-embedding-005` model).  
-- The function batches embeddings (100 per request) for safe upsertion to Vertex AI.
-
----
-
-## 🧹 Clean Up
-
-To remove the function and avoid billing:
-
+Cleanup:
 ```bash
 gcloud functions delete process_lecture --region=us-central1
 ```
-
----
-
-## ✅ Summary
-
-| Component | Service |
-|------------|----------|
-| **Compute Service** | Cloud Functions (2nd Gen) |
-| **Persistence Service** | Vertex AI Vector Search |
-| **Additional Cloud Service** | Cloud Storage |
-
----
