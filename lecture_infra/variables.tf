@@ -15,6 +15,12 @@ variable "lecture_bucket_name" {
     default     = "my-lecture-bucket"
 }
 
+    variable "artifact_repo_id" {
+    description = "Artifact Registry repo id (name only)"
+    type        = string
+    default     = "lecture-api-repo"
+}
+
 variable "cloud_run_image" {
     description = "Container image for your Cloud Run app"
     type        = string

@@ -168,3 +168,111 @@ resource "google_cloudfunctions2_function" "ingest_lecture" {
         google_vertex_ai_index.lecture_index
     ]
 }
+
+resource "google_artifact_registry_repository" "api_repo" {
+    project       = var.project_id
+    location      = var.region
+    repository_id = var.artifact_repo_id
+    format        = "DOCKER"
+
+    description = "Repository for Lecture Assistant Cloud Run API image"
+
+    depends_on = [google_project_service.services]
+}
+
+resource "null_resource" "build_cloud_run_image" {
+    # If you change the tag in var.cloud_run_image, this will rebuild
+    triggers = {
+        image = var.cloud_run_image
+    }
+
+    provisioner "local-exec" {
+        command = "cd ../lecture-rag-backend && gcloud builds submit --tag ${var.cloud_run_image}"
+    }
+
+    depends_on = [google_artifact_registry_repository.api_repo]
+}
+
+
+# Service account for Cloud Run
+resource "google_service_account" "cloud_run_sa" {
+    account_id   = "lecture-api-sa"
+    display_name = "Lecture API Cloud Run SA"
+}
+
+# Allow Cloud Run service to call Vertex AI (Gemini + embeddings + vector search)
+resource "google_project_iam_member" "cloud_run_vertexai" {
+    project = var.project_id
+    role    = "roles/aiplatform.user"
+    member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+# Allow Cloud Run service to write logs to Cloud Logging
+resource "google_project_iam_member" "cloud_run_logging" {
+    project = var.project_id
+    role    = "roles/logging.logWriter"
+    member  = "serviceAccount:${google_service_account.cloud_run_sa.email}"
+}
+
+resource "google_cloud_run_v2_service" "lecture_api" {
+    name     = "lecture-api"
+    location = var.region
+
+    ingress = "INGRESS_TRAFFIC_ALL"
+
+    template {
+        service_account = google_service_account.cloud_run_sa.email
+
+        containers {
+        image = var.cloud_run_image   # image we built above
+
+        # env vars matching your config.py
+        env {
+            name  = "GOOGLE_CLOUD_PROJECT"
+            value = var.project_id
+        }
+        env {
+            name  = "GOOGLE_CLOUD_LOCATION"
+            value = var.region
+        }
+        env {
+            name  = "GOOGLE_GENAI_USE_VERTEXAI"
+            value = "true"
+        }
+        env {
+            name  = "VERTEX_AI_INDEX_ENDPOINT"
+            value = google_vertex_ai_index_endpoint.lecture_endpoint.name
+        }
+        env {
+            name  = "VERTEX_AI_DEPLOYED_INDEX"
+            value = google_vertex_ai_index_endpoint_deployed_index.lecture_deployment.deployed_index_id
+        }
+        env {
+            name  = "GEMINI_MODEL"
+            value = "gemini-2.5-flash"
+        }
+        env {
+            name  = "LOG_LEVEL"
+            value = "info"
+        }
+        }
+    }
+
+    depends_on = [
+        google_project_service.services,
+        null_resource.build_cloud_run_image,  # build image before deploying
+        google_vertex_ai_index_endpoint.lecture_endpoint,
+        google_vertex_ai_index_endpoint_deployed_index.lecture_deployment,
+    ]
+}
+
+resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
+    project  = var.project_id
+    location = var.region
+    name     = google_cloud_run_v2_service.lecture_api.name
+
+    role   = "roles/run.invoker"
+    member = "allUsers"
+
+    depends_on = [google_cloud_run_v2_service.lecture_api]
+}

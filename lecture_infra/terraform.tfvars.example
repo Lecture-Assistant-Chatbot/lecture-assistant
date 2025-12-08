@@ -1,5 +1,6 @@
 project_id           = "your-gcp-project-id"
 region               = "us-central1"
 lecture_bucket_name  = "my-lecture-bucket"
-cloud_run_image      = "us-central1-docker.pkg.dev/your-project/your-repo/lecture-api:latest"
+artifact_repo_id     = "lecture-api-repo"
+cloud_run_image      = "us-central1-docker.pkg.dev/your-gcp-project-id/lecture-api-repo/lecture-api:v1"
 vertex_index_dimensions = 768
