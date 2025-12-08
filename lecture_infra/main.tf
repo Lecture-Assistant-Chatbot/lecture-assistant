@@ -1,22 +1,25 @@
 # Enable the core APIs you need
 resource "google_project_service" "services" {
     for_each = toset([
-        "aiplatform.googleapis.com",       # Vertex AI API
-        "logging.googleapis.com",          # Cloud Logging API
-        "cloudfunctions.googleapis.com",   # Cloud Functions API
-        "eventarc.googleapis.com",         # Eventarc API
-        "run.googleapis.com",              # Cloud Run Admin API
-        "artifactregistry.googleapis.com", # Artifact Registry API
-        "pubsub.googleapis.com",           # Cloud Pub/Sub API
-        "cloudbuild.googleapis.com",       # Cloud Build API
-        "iam.googleapis.com",              # IAM API
-        "storage.googleapis.com",          # Cloud Storage API
+        "aiplatform.googleapis.com",        # Vertex AI API
+        "logging.googleapis.com",           # Cloud Logging API
+        "cloudfunctions.googleapis.com",    # Cloud Functions API
+        "eventarc.googleapis.com",          # Eventarc API
+        "run.googleapis.com",               # Cloud Run Admin API
+        "artifactregistry.googleapis.com",  # Artifact Registry API
+        "pubsub.googleapis.com",            # Cloud Pub/Sub API
+        "cloudbuild.googleapis.com",        # Cloud Build API
+        "iam.googleapis.com",               # IAM API
+        "storage.googleapis.com",           # Cloud Storage API
+        "containerregistry.googleapis.com", # Container Registry API
     ])
 
     project = var.project_id
     service = each.value
 
-    disable_on_destroy = true
+    # Allow terraform destroy to disable services and their dependents
+    disable_on_destroy        = true
+    disable_dependent_services = true
 }
 
 # GCS bucket for lecture PDFs & function code
