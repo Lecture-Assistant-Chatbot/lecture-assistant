@@ -15,9 +15,30 @@ headers {
 }
 
 body:json {
-  {prompt:
+  {
+    "prompt": "yo",
+    "history": [
+      {
+        "role": "assistant",
+        "text": "Hi! I'm your Lecture Assistant Chatbot. Ask me anything from your lectures."
+      },
+      {
+        "role": "user",
+        "text": "what is cloud?"
+      },
+      {
+        "role": "assistant",
+        "text": "Sorry, I couldn’t reach the server."
+      },
+      {
+        "role": "user",
+        "text": "yo"
+      }
+    ]
+  }
 }
 
 settings {
   encodeUrl: false
+  timeout: 0
 }
